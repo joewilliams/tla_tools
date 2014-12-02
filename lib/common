@@ -1,0 +1,4 @@
+#!/bin/sh
+
+JAVA_PATH=/usr/bin/java
+TLA_PATH=/usr/local/tla

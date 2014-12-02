@@ -1,7 +1,6 @@
 #!/bin/sh
 
-JAVA_PATH=/opt/boxen/bin/java
-TLA_PATH=/Users/joe/Downloads/tla/tla
+. $(dirname "$0")/lib/common
 
 # -S/-s: semantic analysis should be done
 # -L/-l: level checking should be done
