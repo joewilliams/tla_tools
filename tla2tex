@@ -1,0 +1,8 @@
+#!/bin/sh
+
+JAVA_PATH=/opt/boxen/bin/java
+TLA_PATH=/Users/joe/Downloads/tla/tla
+
+METADIR=/tmp/tla2tex
+
+$JAVA_PATH -Xmx512m -cp $TLA_PATH tla2tex.TLA -metadir $METADIR $@

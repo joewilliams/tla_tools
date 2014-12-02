@@ -1,0 +1,6 @@
+#!/bin/sh
+
+JAVA_PATH=/opt/boxen/bin/java
+TLA_PATH=/Users/joe/Downloads/tla/tla
+
+$JAVA_PATH -Xmx512m -cp $TLA_PATH pcal.trans $@

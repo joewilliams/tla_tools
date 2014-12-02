@@ -1,0 +1,12 @@
+#!/bin/sh
+
+JAVA_PATH=/opt/boxen/bin/java
+TLA_PATH=/Users/joe/Downloads/tla/tla
+
+# -S/-s: semantic analysis should be done
+# -L/-l: level checking should be done
+# -D/-d: control should be transferred to debugger
+# -STAT/-stat: statistics about builtin operator usage
+# found in http://tlaplus.codeplex.com/SourceControl/latest#tlatools/src/tlc2/TLC.java
+
+$JAVA_PATH -Xmx512m -cp $TLA_PATH tla2sany.SANY $@

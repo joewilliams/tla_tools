@@ -1,0 +1,10 @@
+#!/bin/sh
+
+JAVA_PATH=/opt/boxen/bin/java
+TLA_PATH=/Users/joe/Downloads/tla/tla
+
+WORKERS=`sysctl hw.ncpu | awk '{print $2}'`
+
+METADIR=/tmp/tlc
+
+$JAVA_PATH -Xmx512m -cp $TLA_PATH tlc2.TLC -workers $WORKERS -metadir $METADIR $@
