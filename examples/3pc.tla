@@ -28,7 +28,7 @@ EXTENDS TLC
       };
 
     cohort_precommit:
-      await (cohort_state[self] = "precommit") \/ (cohort_state[self] = "abort");
+      await (cohort_state[self] = "precommit") \/ (cohort_state[self] = "proposal_abort");
 
       if (cohort_state[self] = "precommit") {
         either {
@@ -42,10 +42,13 @@ EXTENDS TLC
       };
 
     cohort_commit:
-      await (cohort_state[self] = "commit") \/ (cohort_state[self] = "abort");
+      await (cohort_state[self] = "commit") \/ (cohort_state[self] = "precommit_abort");
 
     if (cohort_state[self] = "commit") {
       assert(refused = FALSE);
+      cohort_state[self] := "committed";
+    } else {
+      cohort_state[self] := "aborted";
     }
 
   }
@@ -73,7 +76,7 @@ EXTENDS TLC
 
     k := cohort;
     if (aborted = TRUE) {
-      coordinator_proposal_abort: SetAll("abort", k);
+      coordinator_proposal_abort: SetAll("proposal_abort", k);
       k := cohort;
     } else {
       coordinator_proposal_approved: SetAll("precommit", k);
@@ -95,10 +98,21 @@ EXTENDS TLC
 
     k := cohort;
     if (aborted = TRUE) {
-      coordinator_precommit_abort: SetAll("abort", k);
+      coordinator_precommit_abort: SetAll("precommit_abort", k);
+      k := cohort;
     } else {
       coordinator_precommit_approved: SetAll("commit", k);
+      k := cohort;
     };
+
+    final_tally:
+      while (k # {}) {
+        with (p \in k) {
+          await (cohort_state[p] = "committed") \/ (cohort_state[p] = "aborted");
+
+          k := k \ {p};
+        };
+      };
   }
 
 }
@@ -131,7 +145,7 @@ cohort_propose(self) == /\ pc[self] = "cohort_propose"
                         /\ UNCHANGED << cohort, k, aborted >>
 
 cohort_precommit(self) == /\ pc[self] = "cohort_precommit"
-                          /\ (cohort_state[self] = "precommit") \/ (cohort_state[self] = "abort")
+                          /\ (cohort_state[self] = "precommit") \/ (cohort_state[self] = "proposal_abort")
                           /\ IF cohort_state[self] = "precommit"
                                 THEN /\ \/ /\ cohort_state' = [cohort_state EXCEPT ![self] = "ack"]
                                            /\ UNCHANGED refused
@@ -143,14 +157,14 @@ cohort_precommit(self) == /\ pc[self] = "cohort_precommit"
                           /\ UNCHANGED << cohort, k, aborted >>
 
 cohort_commit(self) == /\ pc[self] = "cohort_commit"
-                       /\ (cohort_state[self] = "commit") \/ (cohort_state[self] = "abort")
+                       /\ (cohort_state[self] = "commit") \/ (cohort_state[self] = "precommit_abort")
                        /\ IF cohort_state[self] = "commit"
                              THEN /\ Assert((refused = FALSE), 
                                             "Failure of assertion at line 48, column 7.")
-                             ELSE /\ TRUE
+                                  /\ cohort_state' = [cohort_state EXCEPT ![self] = "committed"]
+                             ELSE /\ cohort_state' = [cohort_state EXCEPT ![self] = "aborted"]
                        /\ pc' = [pc EXCEPT ![self] = "Done"]
-                       /\ UNCHANGED << cohort, cohort_state, k, aborted, 
-                                       refused >>
+                       /\ UNCHANGED << cohort, k, aborted, refused >>
 
 Transaction(self) == cohort_propose(self) \/ cohort_precommit(self)
                         \/ cohort_commit(self)
@@ -191,7 +205,7 @@ coordinator_proposal_tally == /\ pc["coordinator"] = "coordinator_proposal_tally
 coordinator_proposal_abort == /\ pc["coordinator"] = "coordinator_proposal_abort"
                               /\ IF k # {}
                                     THEN /\ \E p \in k:
-                                              /\ cohort_state' = [cohort_state EXCEPT ![p] = "abort"]
+                                              /\ cohort_state' = [cohort_state EXCEPT ![p] = "proposal_abort"]
                                               /\ k' = k \ {p}
                                          /\ pc' = [pc EXCEPT !["coordinator"] = "coordinator_proposal_abort"]
                                     ELSE /\ k' = cohort
@@ -230,11 +244,12 @@ coordinator_precommit_tally == /\ pc["coordinator"] = "coordinator_precommit_tal
 coordinator_precommit_abort == /\ pc["coordinator"] = "coordinator_precommit_abort"
                                /\ IF k # {}
                                      THEN /\ \E p \in k:
-                                               /\ cohort_state' = [cohort_state EXCEPT ![p] = "abort"]
+                                               /\ cohort_state' = [cohort_state EXCEPT ![p] = "precommit_abort"]
                                                /\ k' = k \ {p}
                                           /\ pc' = [pc EXCEPT !["coordinator"] = "coordinator_precommit_abort"]
-                                     ELSE /\ pc' = [pc EXCEPT !["coordinator"] = "Done"]
-                                          /\ UNCHANGED << cohort_state, k >>
+                                     ELSE /\ k' = cohort
+                                          /\ pc' = [pc EXCEPT !["coordinator"] = "final_tally"]
+                                          /\ UNCHANGED cohort_state
                                /\ UNCHANGED << cohort, aborted, refused >>
 
 coordinator_precommit_approved == /\ pc["coordinator"] = "coordinator_precommit_approved"
@@ -243,16 +258,27 @@ coordinator_precommit_approved == /\ pc["coordinator"] = "coordinator_precommit_
                                                   /\ cohort_state' = [cohort_state EXCEPT ![p] = "commit"]
                                                   /\ k' = k \ {p}
                                              /\ pc' = [pc EXCEPT !["coordinator"] = "coordinator_precommit_approved"]
-                                        ELSE /\ pc' = [pc EXCEPT !["coordinator"] = "Done"]
-                                             /\ UNCHANGED << cohort_state, k >>
+                                        ELSE /\ k' = cohort
+                                             /\ pc' = [pc EXCEPT !["coordinator"] = "final_tally"]
+                                             /\ UNCHANGED cohort_state
                                   /\ UNCHANGED << cohort, aborted, refused >>
+
+final_tally == /\ pc["coordinator"] = "final_tally"
+               /\ IF k # {}
+                     THEN /\ \E p \in k:
+                               /\ (cohort_state[p] = "committed") \/ (cohort_state[p] = "aborted")
+                               /\ k' = k \ {p}
+                          /\ pc' = [pc EXCEPT !["coordinator"] = "final_tally"]
+                     ELSE /\ pc' = [pc EXCEPT !["coordinator"] = "Done"]
+                          /\ k' = k
+               /\ UNCHANGED << cohort, cohort_state, aborted, refused >>
 
 Coordinator == start \/ coordinator_proposal \/ coordinator_proposal_tally
                   \/ coordinator_proposal_abort
                   \/ coordinator_proposal_approved
                   \/ coordinator_precommit_tally
                   \/ coordinator_precommit_abort
-                  \/ coordinator_precommit_approved
+                  \/ coordinator_precommit_approved \/ final_tally
 
 Next == Coordinator
            \/ (\E self \in cohort: Transaction(self))
@@ -268,9 +294,12 @@ Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 \* Invariants
 
 StateOK == /\ (\A i \in cohort: cohort_state[i] \in {"start", "propose",
-            "yes", "no", "commit", "abort", "ack"})
+            "yes", "no", "commit", "abort", "ack", "proposal_abort",
+            "precommit_abort"})
 
-FinalState == /\ \/ <>(\A i \in cohort: cohort_state[i] = "commit")
-                \/ <>(\A i \in cohort: cohort_state[i] = "abort")
+FinalState == /\ \/ <>(\A i \in cohort: cohort_state[i] = "committed")
+                \/ <>(\A i \in cohort: cohort_state[i] = "aborted")
+
+
 ===================================================================
 
